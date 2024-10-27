@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Clock, Play, Pause, SkipForward, Plus, X, Save } from 'lucide-svelte';
+	import { Clock, Play, Pause, SkipForward, Plus, X, Save, GripVertical } from 'lucide-svelte';
 
 	type Task = {
 		title: string;
@@ -17,6 +17,7 @@
 	let timerInterval: undefined | number = $state(undefined);
 	let draggedIndex = $state<number | null>(null);
 	let dropTarget = $state<number | null>(null);
+	let touchStartY = $state<number | null>(null);
 
 	onMount(() => {
 		const savedTasks = localStorage.getItem('tasks');
@@ -88,29 +89,39 @@
 		return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 	}
 
-	// Add these functions for drag and drop
-	function handleDragStart(e: DragEvent, index: number) {
+	// Enhanced drag and drop functions for both mouse and touch
+	function handleDragStart(e: DragEvent | TouchEvent, index: number) {
 		draggedIndex = index;
-		e.dataTransfer?.setData('text/plain', index.toString());
+		if (e instanceof DragEvent) {
+			e.dataTransfer?.setData('text/plain', index.toString());
+		} else {
+			touchStartY = e.touches[0].clientY;
+			(e.target as HTMLElement).closest('.task-item')!.style.opacity = '0.5';
+		}
 	}
 
-	function handleDragEnd() {
+	function handleDragEnd(e: DragEvent | TouchEvent) {
 		draggedIndex = null;
 		dropTarget = null;
+		touchStartY = null;
+		if (e instanceof TouchEvent) {
+			(e.target as HTMLElement).closest('.task-item')!.style.opacity = '1';
+		}
 	}
 
-	function handleDragOver(e: DragEvent, index: number) {
-		e.preventDefault();
+	function handleDragOver(e: DragEvent | TouchEvent, index: number) {
+		// e.preventDefault();
 		if (draggedIndex === null || draggedIndex === index) return;
 
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		const midpoint = rect.top + rect.height / 2;
+		const clientY = e instanceof DragEvent ? e.clientY : e.touches[0].clientY;
 
-		// If mouse is in bottom half of element, we'll drop after it
-		dropTarget = e.clientY > midpoint ? index + 1 : index;
+		// If mouse/touch is in bottom half of element, we'll drop after it
+		dropTarget = clientY > midpoint ? index + 1 : index;
 	}
 
-	function handleDrop(e: DragEvent) {
+	function handleDrop(e: DragEvent | TouchEvent) {
 		e.preventDefault();
 		if (draggedIndex === null || dropTarget === null) return;
 
@@ -124,6 +135,13 @@
 		tasks = newTasks;
 		draggedIndex = null;
 		dropTarget = null;
+		touchStartY = null;
+	}
+
+	function handleTouchMove(e: TouchEvent, index: number) {
+		// e.preventDefault();
+		if (draggedIndex === null) return;
+		handleDragOver(e, index);
 	}
 </script>
 
@@ -167,6 +185,7 @@
 					dropTarget = Math.min(index, tasks.length);
 				}}
 				ondrop={handleDrop}
+				ontouchend={handleDrop}
 			>
 				{#each tasks as task, index}
 					{#if dropTarget === index}
@@ -174,16 +193,27 @@
 					{/if}
 					<div
 						role="listitem"
-						class="flex items-center justify-between p-3 bg-gray-50 rounded cursor-move hover:bg-gray-100 transition-colors"
+						class="task-item flex items-center justify-between p-3 bg-gray-50 rounded hover:bg-gray-100 transition-colors"
 						class:opacity-50={draggedIndex === index}
 						draggable="true"
 						ondragstart={(e) => handleDragStart(e, index)}
 						ondragend={handleDragEnd}
 						ondragover={(e) => handleDragOver(e, index)}
 					>
-						<div>
-							<div class="font-medium">{task.title}</div>
-							<div class="text-sm text-gray-500 select-none">{formatTime(task.duration)}</div>
+						<div class="flex items-center gap-3">
+							<div
+								class="touch-none cursor-move"
+								ontouchstart={(e) => handleDragStart(e, index)}
+								ontouchmove={(e) => handleTouchMove(e, index)}
+								ontouchend={handleDragEnd}
+								ontouchcancel={handleDragEnd}
+							>
+								<GripVertical class="w-5 h-5 text-gray-400" />
+							</div>
+							<div>
+								<div class="font-medium">{task.title}</div>
+								<div class="text-sm text-gray-500 select-none">{formatTime(task.duration)}</div>
+							</div>
 						</div>
 						<button onclick={() => removeTask(index)} class="p-1 text-gray-500 hover:text-red-500">
 							<X class="w-5 h-5" />
