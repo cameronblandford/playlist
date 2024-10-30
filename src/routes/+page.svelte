@@ -21,7 +21,6 @@
 	let taskIds = $state<string[]>([]);
 	let tasks = $derived(taskIds.map((id) => tasksDatabase[id]));
 	let newTaskTitle = $state('');
-	let newTaskDuration = $state('');
 	let timerInterval: undefined | number = $state(undefined);
 	let playState = $state({
 		currentTaskIndex: 0,
@@ -72,15 +71,35 @@
 
 	function addTask(e: Event) {
 		e.preventDefault();
-		if (!newTaskTitle || !newTaskDuration) return;
 
-		const duration = parseInt(newTaskDuration) * 60;
+		if (!newTaskTitle) return;
+
+		// Parse title and duration from format "title duration"
+		const parts = newTaskTitle.trim().split(/\s+/);
+		if (parts.length < 2) {
+			alert('Please enter task in format "title duration" (e.g. "go to store 5")');
+			return;
+		}
+
+		const durationStr = parts[parts.length - 1];
+		const title = parts.slice(0, -1).join(' ');
+		const durationMins = parseInt(durationStr);
+
+		if (isNaN(durationMins)) {
+			alert('Duration must be a number');
+			return;
+		}
+
+		if (durationMins <= 0) {
+			alert('Duration must be greater than 0');
+			return;
+		}
+
+		const duration = durationMins * 60; // Convert to seconds
 		const id = crypto.randomUUID();
-		tasksDatabase[id] = { id, title: newTaskTitle, duration };
+		tasksDatabase[id] = { id, title, duration };
 		taskIds.push(id);
 		newTaskTitle = '';
-		newTaskDuration = '';
-		console.log(tasks);
 	}
 
 	function removeTask(id: string) {
@@ -152,24 +171,15 @@
 			<h1 class="text-2xl font-bold text-gray-900">Task Playlist</h1>
 
 			<form onsubmit={addTask} class="space-y-2">
-				<input
-					type="text"
-					bind:value={newTaskTitle}
-					placeholder="Task name"
-					class="w-full p-2 border rounded"
-					minlength="1"
-					maxlength="100"
-					required
-				/>
 				<div class="flex gap-2">
 					<input
-						type="number"
-						bind:value={newTaskDuration}
-						placeholder="Duration (minutes)"
-						class="flex-1 p-2 border rounded"
-						min="1"
-						max="120"
+						type="text"
+						bind:value={newTaskTitle}
+						placeholder="task <duration in min>"
+						class="w-full p-2 border rounded"
 						required
+						autocomplete="off"
+						data-lpignore="true"
 					/>
 					<button type="submit" class="p-2 bg-blue-500 text-white rounded hover:bg-blue-600">
 						<Plus class="w-5 h-5" />
