@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Clock, Play, Pause, SkipForward, Plus, X, Save, GripVertical } from 'lucide-svelte';
+	import { Play, Pause, SkipForward, Plus, X, Save, GripVertical } from 'lucide-svelte';
 	import { flip } from 'svelte/animate';
 	import { dragHandle, dragHandleZone } from 'svelte-dnd-action';
 
@@ -8,45 +8,58 @@
 		id: string;
 		title: string;
 		duration: number;
+		deletedAt?: number;
+		completedAt?: number;
+		startedAt?: number;
+		timeElapsed?: number;
 	};
 
+	type TasksDatabase = Record<string, Task>;
+
 	let mode = $state('edit'); // 'edit' or 'play'
-	let tasks = $state<Task[]>([]);
-	let currentTaskIndex = $state(0);
-	let timeRemaining = $state(0);
-	let isPlaying = $state(false);
+	let tasksDatabase = $state<TasksDatabase>({});
+	let taskIds = $state<string[]>([]);
+	let tasks = $derived(taskIds.map((id) => tasksDatabase[id]));
 	let newTaskTitle = $state('');
 	let newTaskDuration = $state('');
 	let timerInterval: undefined | number = $state(undefined);
-	let draggedIndex = $state<number | null>(null);
-	let dropTarget = $state<number | null>(null);
-	let touchStartY = $state<number | null>(null);
-	let draggedElement = $state<HTMLElement | null>(null);
+	let playState = $state({
+		currentTaskIndex: 0,
+		timeRemaining: 0,
+		isPlaying: false,
+		lastUpdate: Date.now(),
+		taskIds: [] as string[]
+	});
+	let currentTask = $derived(tasksDatabase[playState.taskIds[playState.currentTaskIndex]]);
+	let planState = $state({});
 
 	onMount(() => {
-		const savedTasks = localStorage.getItem('tasks');
-		if (savedTasks) {
-			tasks = JSON.parse(savedTasks);
+		const savedTasksDatabase = localStorage.getItem('tasksDatabase');
+		const savedTaskIds = localStorage.getItem('taskIds');
+		if (savedTasksDatabase && savedTaskIds) {
+			tasksDatabase = JSON.parse(savedTasksDatabase);
+			taskIds = JSON.parse(savedTaskIds);
 		}
 	});
 
 	// Save tasks whenever they change
 	$effect(() => {
 		if (tasks) {
-			localStorage.setItem('tasks', JSON.stringify(tasks));
+			localStorage.setItem('tasksDatabase', JSON.stringify(tasksDatabase));
+			localStorage.setItem('taskIds', JSON.stringify(taskIds));
 		}
 	});
 
 	// Timer logic
 	$effect(() => {
-		if (isPlaying && timeRemaining > 0) {
+		if (playState.isPlaying && playState.timeRemaining > 0) {
 			timerInterval = setInterval(() => {
-				if (timeRemaining <= 1) {
-					isPlaying = false;
-					timeRemaining = 0;
+				if (playState.timeRemaining <= 1) {
+					playState.isPlaying = false;
+					playState.timeRemaining = 0;
 					clearInterval(timerInterval);
 				} else {
-					timeRemaining--;
+					playState.timeRemaining--;
 				}
 			}, 1000);
 
@@ -59,40 +72,51 @@
 		if (!newTaskTitle || !newTaskDuration) return;
 
 		const duration = parseInt(newTaskDuration) * 60;
-		tasks = [
-			...tasks,
-			{
-				id: crypto.randomUUID(),
-				title: newTaskTitle,
-				duration
-			}
-		];
+		const id = crypto.randomUUID();
+		tasksDatabase[id] = { id, title: newTaskTitle, duration };
+		taskIds.push(id);
 		newTaskTitle = '';
 		newTaskDuration = '';
 		console.log(tasks);
 	}
 
 	function removeTask(id: string) {
-		tasks = tasks.filter((task) => task.id !== id);
+		tasksDatabase[id].deletedAt = Date.now();
+		taskIds = taskIds.filter((taskId) => taskId !== id);
 	}
 
 	function startPlaylist() {
 		if (tasks.length === 0) return;
 		mode = 'play';
-		currentTaskIndex = 0;
-		timeRemaining = tasks[0].duration;
-		isPlaying = true;
+		playState.currentTaskIndex = 0;
+		playState.taskIds = [...taskIds];
+		playState.timeRemaining = tasksDatabase[playState.taskIds[0]].duration;
+		tasksDatabase[currentTask.id].startedAt = Date.now();
+		playState.isPlaying = true;
+	}
+
+	function nextTask() {
+		if (playState.currentTaskIndex < playState.taskIds.length - 1) {
+			playState.currentTaskIndex++;
+			playState.timeRemaining =
+				tasksDatabase[playState.taskIds[playState.currentTaskIndex]].duration;
+			playState.isPlaying = true;
+			tasksDatabase[currentTask.id].startedAt = Date.now();
+		} else {
+			mode = 'edit';
+			playState.isPlaying = false;
+		}
 	}
 
 	function skipTask() {
-		if (currentTaskIndex < tasks.length - 1) {
-			currentTaskIndex++;
-			timeRemaining = tasks[currentTaskIndex].duration;
-			isPlaying = true;
-		} else {
-			mode = 'edit';
-			isPlaying = false;
-		}
+		tasksDatabase[currentTask.id].timeElapsed =
+			Date.now() - (tasksDatabase[currentTask.id]?.startedAt ?? Date.now());
+		nextTask();
+	}
+	function completeTask() {
+		tasksDatabase[currentTask.id].completedAt = Date.now();
+		taskIds = taskIds.filter((taskId) => taskId !== currentTask.id);
+		nextTask();
 	}
 
 	function formatTime(seconds: number) {
@@ -102,14 +126,21 @@
 	}
 
 	function handleDndConsider(e: CustomEvent<{ items: Task[] }>) {
-		tasks = e.detail.items;
+		taskIds = e.detail.items.map((task) => task.id);
 	}
 
 	function handleDndFinalize(e: CustomEvent<{ items: Task[] }>) {
-		tasks = e.detail.items;
+		taskIds = e.detail.items.map((task) => task.id);
 	}
 
 	const flipDurationMs = 300;
+
+	$effect(() => {
+		console.log(tasksDatabase);
+		localStorage.setItem('tasksDatabase', JSON.stringify(tasksDatabase));
+		localStorage.setItem('playState', JSON.stringify(playState));
+		localStorage.setItem('taskIds', JSON.stringify(taskIds));
+	});
 </script>
 
 <div class="max-w-md mx-auto p-4 space-y-4">
@@ -192,19 +223,19 @@
 			<div class="text-center p-6 bg-blue-500 text-white rounded-lg">
 				<div class="text-sm mb-2">Current Task</div>
 				<div class="text-2xl font-bold mb-4">
-					{tasks[currentTaskIndex].title}
+					{tasksDatabase[playState.taskIds[playState.currentTaskIndex]]?.title}
 				</div>
 				<div class="text-4xl font-mono">
-					{formatTime(timeRemaining)}
+					{formatTime(playState.timeRemaining)}
 				</div>
 			</div>
 
 			<div class="flex justify-center gap-4">
 				<button
-					onclick={() => (isPlaying = !isPlaying)}
+					onclick={() => (playState.isPlaying = !playState.isPlaying)}
 					class="p-3 bg-gray-100 rounded-full hover:bg-gray-200"
 				>
-					{#if isPlaying}
+					{#if playState.isPlaying}
 						<Pause class="w-6 h-6" />
 					{:else}
 						<Play class="w-6 h-6" />
@@ -214,10 +245,13 @@
 				<button onclick={skipTask} class="p-3 bg-gray-100 rounded-full hover:bg-gray-200">
 					<SkipForward class="w-6 h-6" />
 				</button>
+				<button onclick={completeTask} class="p-3 bg-gray-100 rounded-full hover:bg-gray-200">
+					<Play class="w-6 h-6" />
+				</button>
 			</div>
 
 			<div class="text-center text-sm text-gray-500">
-				Task {currentTaskIndex + 1} of {tasks.length}
+				Task {playState.currentTaskIndex + 1} of {playState.taskIds.length}
 			</div>
 		</div>
 	{/if}
