@@ -19,7 +19,8 @@
 	let mode = $state('edit'); // 'edit' or 'play'
 	let tasksDatabase = $state<TasksDatabase>({});
 	let taskIds = $state<string[]>([]);
-	let tasks = $derived(taskIds.map((id) => tasksDatabase[id]));
+	// let tasks = $derived(taskIds.map((id) => tasksDatabase[id]));
+	let tasks = $state<Task[]>([]);
 	let newTaskTitle = $state('');
 	let timerInterval: undefined | number = $state(undefined);
 	let playState = $state({
@@ -31,6 +32,10 @@
 	});
 	let currentTask = $derived(tasksDatabase[playState.taskIds[playState.currentTaskIndex]]);
 	let planState = $state({});
+
+	$effect(() => {
+		tasks = taskIds.map((id) => tasksDatabase[id]);
+	});
 
 	onMount(() => {
 		const savedTasksDatabase = localStorage.getItem('tasksDatabase');
@@ -152,11 +157,18 @@
 	}
 
 	function handleDndConsider(e: CustomEvent<{ items: Task[] }>) {
-		taskIds = e.detail.items.map((task) => task.id);
+		console.log('CONSIDERING');
+		console.log(e.detail.items);
+		// taskIds = e.detail.items.map((item) => item.id);
+		tasks = e.detail.items;
+		// taskIds = e.detail.items.map((item) => item.id);
 	}
 
 	function handleDndFinalize(e: CustomEvent<{ items: Task[] }>) {
-		taskIds = e.detail.items.map((task) => task.id);
+		console.log('FINALIZING');
+		console.log(e.detail.items);
+		tasks = e.detail.items;
+		taskIds = e.detail.items.map((item) => item.id);
 	}
 
 	const flipDurationMs = 300;
@@ -194,12 +206,11 @@
 				use:dragHandleZone={{
 					items: tasks,
 					flipDurationMs
-					// dragHandle: '.handle'
 				}}
 				onconsider={handleDndConsider}
 				onfinalize={handleDndFinalize}
 			>
-				{#each tasks as task (task.id)}
+				{#each tasks.filter((x) => !!x) as task (task.id)}
 					<div
 						animate:flip={{ duration: flipDurationMs }}
 						class="task-item flex items-center justify-between p-3 bg-gray-50 rounded hover:bg-gray-100 transition-colors"
