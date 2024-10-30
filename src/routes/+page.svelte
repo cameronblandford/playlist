@@ -243,6 +243,9 @@
 					Start Playlist
 				</button>
 			{/if}
+			<div class="text-center text-sm text-gray-500">
+				Total time: {formatTime(tasks.reduce((acc, task) => acc + task.duration, 0))}
+			</div>
 		</div>
 	{:else}
 		<div class="space-y-4">
