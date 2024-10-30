@@ -100,6 +100,10 @@
 		tasksDatabase[id] = { id, title, duration };
 		taskIds.push(id);
 		newTaskTitle = '';
+
+		// Return focus to input for mobile
+		const input = document.querySelector('input[type="text"]') as HTMLInputElement;
+		input?.focus();
 	}
 
 	function removeTask(id: string) {
@@ -168,8 +172,6 @@
 <div class="max-w-md mx-auto p-4 space-y-4">
 	{#if mode === 'edit'}
 		<div class="space-y-4">
-			<h1 class="text-2xl font-bold text-gray-900">Task Playlist</h1>
-
 			<form onsubmit={addTask} class="space-y-2">
 				<div class="flex gap-2">
 					<input
