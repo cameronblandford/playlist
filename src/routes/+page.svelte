@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Play, Pause, SkipForward, Plus, X, Save, GripVertical } from 'lucide-svelte';
+	import { Play, Pause, SkipForward, Plus, X, GripVertical, Check } from 'lucide-svelte';
 	import { flip } from 'svelte/animate';
 	import { dragHandle, dragHandleZone } from 'svelte-dnd-action';
 
@@ -52,14 +52,17 @@
 
 	// Timer logic
 	$effect(() => {
-		if (playState.isPlaying && playState.timeRemaining > 0) {
+		if (playState.isPlaying && currentTask) {
 			timerInterval = setInterval(() => {
-				if (playState.timeRemaining <= 1) {
+				const elapsedTime = Date.now() - (currentTask.startedAt ?? Date.now());
+				const timeRemaining = currentTask.duration - Math.floor(elapsedTime / 1000);
+
+				if (timeRemaining <= 0) {
 					playState.isPlaying = false;
 					playState.timeRemaining = 0;
 					clearInterval(timerInterval);
 				} else {
-					playState.timeRemaining--;
+					playState.timeRemaining = timeRemaining;
 				}
 			}, 1000);
 
@@ -220,7 +223,11 @@
 		</div>
 	{:else}
 		<div class="space-y-4">
-			<div class="text-center p-6 bg-blue-500 text-white rounded-lg">
+			<div
+				class="text-center p-6 {playState.isPlaying
+					? 'bg-blue-500'
+					: 'bg-gray-500'} text-white rounded-lg"
+			>
 				<div class="text-sm mb-2">Current Task</div>
 				<div class="text-2xl font-bold mb-4">
 					{tasksDatabase[playState.taskIds[playState.currentTaskIndex]]?.title}
@@ -246,7 +253,7 @@
 					<SkipForward class="w-6 h-6" />
 				</button>
 				<button onclick={completeTask} class="p-3 bg-gray-100 rounded-full hover:bg-gray-200">
-					<Play class="w-6 h-6" />
+					<Check class="w-6 h-6" />
 				</button>
 			</div>
 
